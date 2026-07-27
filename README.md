@@ -1,80 +1,53 @@
 # Lovable Project Downloader
 
-Exporte projetos do [Lovable](https://lovable.dev/) como arquivos ZIP diretamente pelo navegador usando Tampermonkey.
+Userscript para baixar um projeto completo do Lovable em um arquivo ZIP diretamente pelo navegador.
+
+## Instalação rápida
+
+### Opção 1 — instalar pelo GitHub
+
+1. Abra o arquivo [`lovable-project-downloader.user.js`](./lovable-project-downloader.user.js).
+2. Clique em **Raw**.
+3. O Tampermonkey deverá abrir a tela de instalação.
+4. Confirme em **Instalar**.
+
+### Opção 2 — copiar e colar
+
+1. Abra [`lovable-project-downloader.user.js`](./lovable-project-downloader.user.js).
+2. Copie todo o conteúdo.
+3. Abra o Tampermonkey.
+4. Crie um novo script.
+5. Apague o conteúdo padrão.
+6. Cole o código.
+7. Salve.
+
+## Como usar
+
+1. Entre em `lovable.dev`.
+2. Abra um projeto ao qual você tenha acesso.
+3. Clique em **Baixar projeto completo** no canto inferior direito.
+4. Aguarde o ZIP ser gerado e baixado.
 
 ## Recursos
 
-- Exportação completa do projeto atual em ZIP
-- Download paralelo com controle de concorrência
-- Tentativas automáticas em falhas temporárias
-- Validação da árvore de arquivos antes da compactação
-- Suporte seguro a arquivos binários
-- Barra de progresso e cancelamento
-- Compactação ZIP feita no próprio navegador
-- Não envia o conteúdo do projeto para servidores externos
+- Exporta todos os arquivos do projeto em ZIP
+- Barra de progresso
+- Cancelamento da exportação
+- Tentativas automáticas em falhas de rede
+- Suporte a arquivos binários
+- Compactação local no navegador
+- Não envia o projeto para servidores externos
 
-## Instalação
+## Segurança e privacidade
 
-1. Instale o [Tampermonkey](https://www.tampermonkey.net/) no navegador.
-2. Abra o arquivo [`lovable-project-downloader.user.js`](./lovable-project-downloader.user.js).
-3. Clique em **Raw** no GitHub.
-4. Confirme a instalação no Tampermonkey.
-5. Abra um projeto em `lovable.dev`.
-6. Use o botão **Baixar projeto completo** no canto inferior direito.
+O script usa apenas a sessão já aberta no Lovable para acessar projetos autorizados. Nenhum token, senha ou cookie pessoal está gravado no código.
 
-## Como funciona
-
-O userscript usa a sessão autenticada já aberta no Lovable para consultar os endpoints Git utilizados pela própria aplicação. Em seguida:
-
-1. identifica o projeto atual;
-2. obtém a árvore de arquivos;
-3. baixa os arquivos com concorrência limitada;
-4. valida todos os resultados;
-5. gera o ZIP localmente;
-6. inicia o download no navegador.
-
-## Privacidade e segurança
-
-- O script roda apenas em `lovable.dev` e subdomínios.
-- O ZIP é criado localmente no navegador.
-- Nenhum arquivo do projeto é enviado a serviços de terceiros.
-- Tokens de autenticação não são gravados no repositório.
-- Use apenas em projetos aos quais você possui acesso autorizado.
-
-## Limitações
-
-- Depende dos endpoints internos atualmente utilizados pelo Lovable.
-- Mudanças na API ou na autenticação do Lovable podem exigir atualização.
-- O formato ZIP32 limita o arquivo final a aproximadamente 4 GiB e 65.535 arquivos.
-- Projetos muito grandes podem consumir bastante memória do navegador.
-
-## Compatibilidade
-
-Testado para navegadores compatíveis com:
-
-- Tampermonkey
-- `fetch`
-- `AbortController`
-- `CompressionStream` — opcional; sem suporte, os arquivos são armazenados sem compressão
-
-## Desenvolvimento
-
-O projeto é mantido como um userscript único, sem processo de build.
-
-Para contribuir:
-
-1. faça um fork;
-2. crie uma branch;
-3. altere o arquivo `.user.js`;
-4. teste em um projeto autorizado;
-5. abra um pull request descrevendo a mudança.
-
-Consulte também o arquivo [CONTRIBUTING.md](./CONTRIBUTING.md).
+Use somente em projetos aos quais você possui acesso legítimo.
 
 ## Aviso
 
-Este projeto é independente e não possui vínculo oficial com a Lovable. Os nomes e marcas citados pertencem aos seus respectivos proprietários.
+Projeto independente, sem vínculo oficial com a Lovable.
 
 ## Licença
 
-Distribuído sob a licença MIT. Consulte [LICENSE](./LICENSE).
+MIT
