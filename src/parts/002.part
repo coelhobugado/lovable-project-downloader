@@ -1,0 +1,120 @@
+        const projectId = extractProjectId(url.pathname);
+        const ref = url.searchParams.get('ref');
+        if (projectId && isCommitSha(ref)) {
+            state.refsByProject.set(projectId, ref);
+        }
+    }
+
+    function installRouteWatcher() {
+        const notify = () => window.dispatchEvent(new Event('lovable-downloader:route-change'));
+
+        for (const method of ['pushState', 'replaceState']) {
+            const original = history[method];
+            history[method] = function patchedHistory(...args) {
+                const result = original.apply(this, args);
+                notify();
+                return result;
+            };
+        }
+
+        window.addEventListener('popstate', notify);
+        window.addEventListener('lovable-downloader:route-change', scheduleUiRefresh);
+
+        onDomReady(() => {
+            const observer = new MutationObserver(scheduleUiRefresh);
+            observer.observe(document.documentElement, { childList: true, subtree: true });
+            scheduleUiRefresh();
+        });
+    }
+
+    function scheduleUiRefresh() {
+        clearTimeout(state.routeTimer);
+        state.routeTimer = window.setTimeout(ensureUi, 150);
+    }
+
+    function onDomReady(callback) {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', callback, { once: true });
+        } else {
+            callback();
+        }
+    }
+
+    function ensureUi() {
+        if (!document.body) return;
+
+        if (!state.ui || !state.ui.root.isConnected) {
+            state.ui = createUi();
+            document.body.appendChild(state.ui.root);
+        }
+
+        const projectId = getCurrentProjectId();
+        state.ui.root.hidden = !projectId;
+
+        if (!state.exporting) {
+            setStatus(projectId ? 'Pronto para exportar' : 'Abra um projeto do Lovable', 0);
+        }
+    }
+
+    function createUi() {
+        const root = document.createElement('section');
+        root.id = 'lovable-downloader-pro';
+        root.hidden = true;
+        root.setAttribute('aria-label', 'Exportador de projeto Lovable');
+        root.innerHTML = `
+            <style>
+                #lovable-downloader-pro {
+                    all: initial;
+                    position: fixed;
+                    right: 22px;
+                    bottom: 22px;
+                    z-index: 2147483647;
+                    width: min(360px, calc(100vw - 28px));
+                    box-sizing: border-box;
+                    padding: 12px;
+                    border: 1px solid rgba(255,255,255,.14);
+                    border-radius: 16px;
+                    background: rgba(20, 18, 29, .94);
+                    color: #fff;
+                    box-shadow: 0 14px 44px rgba(0,0,0,.38);
+                    backdrop-filter: blur(14px);
+                    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                }
+                #lovable-downloader-pro[hidden] { display: none !important; }
+                #lovable-downloader-pro * { box-sizing: border-box; }
+                #lovable-downloader-pro .ld-head { display: flex; align-items: center; gap: 10px; }
+                #lovable-downloader-pro .ld-main {
+                    appearance: none;
+                    flex: 1;
+                    min-width: 0;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 8px;
+                    padding: 11px 14px;
+                    border: 0;
+                    border-radius: 11px;
+                    background: linear-gradient(135deg, #7c3aed 0%, #db2777 100%);
+                    color: #fff;
+                    cursor: pointer;
+                    font: 700 13px/1.2 inherit;
+                    box-shadow: 0 8px 22px rgba(124,58,237,.32);
+                    transition: transform .16s ease, filter .16s ease, opacity .16s ease;
+                }
+                #lovable-downloader-pro .ld-main:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.08); }
+                #lovable-downloader-pro .ld-main:active:not(:disabled) { transform: translateY(0); }
+                #lovable-downloader-pro .ld-main:focus-visible,
+                #lovable-downloader-pro .ld-cancel:focus-visible { outline: 2px solid #c4b5fd; outline-offset: 2px; }
+                #lovable-downloader-pro .ld-main:disabled { cursor: wait; opacity: .72; }
+                #lovable-downloader-pro .ld-cancel {
+                    appearance: none;
+                    display: none;
+                    width: 38px;
+                    height: 38px;
+                    border: 1px solid rgba(255,255,255,.14);
+                    border-radius: 10px;
+                    background: rgba(255,255,255,.08);
+                    color: #fff;
+                    cursor: pointer;
+                    font: 700 17px/1 inherit;
+                }
