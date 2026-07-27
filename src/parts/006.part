@@ -1,0 +1,120 @@
+                ...init,
+                headers,
+                credentials: 'include',
+            },
+            retries,
+            init.signal
+        );
+
+        if ((response.status === 401 || response.status === 403) && !state.authHeader) {
+            throw new Error('A sessão do Lovable não autorizou o acesso ao projeto. Recarregue a página e tente novamente.');
+        }
+
+        return response;
+    }
+
+    async function fetchWithRetry(url, init, retries, signal) {
+        let lastError;
+
+        for (let attempt = 0; attempt <= retries; attempt += 1) {
+            throwIfAborted(signal);
+            try {
+                const response = await fetchWithTimeout(url, init, REQUEST_TIMEOUT_MS, signal);
+                if (response.ok) return response;
+
+                const retryable = response.status === 408 || response.status === 425 || response.status === 429 || response.status >= 500;
+                if (!retryable || attempt === retries) {
+                    const details = await safeResponseSnippet(response);
+                    const error = new Error(`HTTP ${response.status}${details ? ` — ${details}` : ''}`);
+                    error.nonRetryable = !retryable;
+                    throw error;
+                }
+
+                const retryAfter = parseRetryAfter(response.headers.get('retry-after'));
+                await sleep(retryAfter ?? backoffDelay(attempt), signal);
+                continue;
+            } catch (error) {
+                if (isAbortError(error)) throw error;
+                if (error?.nonRetryable) throw error;
+                lastError = error;
+                if (attempt === retries) break;
+                await sleep(backoffDelay(attempt), signal);
+            }
+        }
+
+        throw lastError || new Error('Falha de rede desconhecida.');
+    }
+
+    async function fetchWithTimeout(url, init, timeoutMs, parentSignal) {
+        const timeoutController = new AbortController();
+        const timeoutId = setTimeout(
+            () => timeoutController.abort(new DOMException('Tempo limite da requisição excedido.', 'TimeoutError')),
+            timeoutMs
+        );
+
+        const signal = combineSignals(parentSignal, timeoutController.signal);
+        try {
+            return await nativeFetch(url, { ...init, signal });
+        } finally {
+            clearTimeout(timeoutId);
+        }
+    }
+
+    function combineSignals(...signals) {
+        const active = signals.filter(Boolean);
+        if (active.length === 0) return undefined;
+        if (active.length === 1) return active[0];
+        if (typeof AbortSignal.any === 'function') return AbortSignal.any(active);
+
+        const controller = new AbortController();
+        for (const signal of active) {
+            if (signal.aborted) {
+                controller.abort(signal.reason);
+                break;
+            }
+            signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true });
+        }
+        return controller.signal;
+    }
+
+    async function runWorkerPool(items, concurrency, worker, signal) {
+        let nextIndex = 0;
+        const count = Math.max(1, Math.min(concurrency, items.length));
+
+        const runners = Array.from({ length: count }, async () => {
+            while (true) {
+                throwIfAborted(signal);
+                const index = nextIndex;
+                nextIndex += 1;
+                if (index >= items.length) return;
+                await worker(items[index], index);
+            }
+        });
+
+        await Promise.all(runners);
+    }
+
+    class ZipBuilder {
+        constructor() {
+            this.parts = [];
+            this.centralDirectory = [];
+            this.offset = 0;
+            this.count = 0;
+            this.date = new Date();
+        }
+
+        async add(rawPath, input) {
+            const path = normalizeZipPath(rawPath);
+            const name = new TextEncoder().encode(path);
+            const original = toUint8Array(input);
+
+            if (original.byteLength > MAX_ZIP32_SIZE) {
+                throw new Error(`O arquivo ${path} excede o limite ZIP32 de 4 GiB.`);
+            }
+            if (this.offset > MAX_ZIP32_SIZE) {
+                throw new Error('O ZIP ultrapassou o limite ZIP32 de 4 GiB.');
+            }
+
+            const crc = crc32(original);
+            const compressed = await compressForZip(original);
+            const method = compressed.method;
