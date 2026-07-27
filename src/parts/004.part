@@ -1,0 +1,120 @@
+                setStatus(`Compactando ${index + 1}/${total} • ${file.path}`, percent);
+                if (index % 10 === 0) await yieldToBrowser();
+            }
+
+            const zipBytes = zip.finish();
+            const displayName = inferProjectName(projectId);
+            const snapshotName = ref ? ref.slice(0, 8) : 'current';
+            const fileName = `${sanitizeFileName(displayName)}-${snapshotName}.zip`;
+
+            setStatus(`Salvando ${formatBytes(zipBytes.byteLength)}…`, 99);
+            triggerDownload(zipBytes, fileName);
+            setStatus(`Concluído: ${total} arquivos • ${formatBytes(zipBytes.byteLength)}`, 100);
+        } catch (error) {
+            if (isAbortError(error)) {
+                setStatus('Exportação cancelada.', 0);
+            } else {
+                console.error('[Lovable Downloader] Falha na exportação:', error);
+                setStatus(`Erro: ${firstLine(readableError(error))}`, 0);
+                showError(readableError(error));
+            }
+        } finally {
+            state.exporting = false;
+            state.controller = null;
+            setBusy(false);
+        }
+    }
+
+    async function ensureAuthAvailable(projectId, signal) {
+        if (state.authHeader) return;
+
+        state.authHeader = findAuthHeaderInStorage();
+        if (state.authHeader) return;
+
+        const startedAt = Date.now();
+        while (!state.authHeader && Date.now() - startedAt < AUTH_WAIT_MS) {
+            throwIfAborted(signal);
+            await sleep(100, signal);
+        }
+
+        // Algumas sessões autenticam a API por cookie. Faz uma chamada leve para testar.
+        const probe = await fetchWithTimeout(
+            `${API_ORIGIN}/projects/${projectId}/workspace`,
+            { credentials: 'include', signal },
+            REQUEST_TIMEOUT_MS,
+            signal
+        );
+
+        if (probe.ok) return;
+
+        if (probe.status === 401 || probe.status === 403) {
+            throw new Error(
+                'A autenticação da sessão não foi capturada. Recarregue esta página do Lovable com o Tampermonkey ativo e tente novamente.'
+            );
+        }
+
+        throw new Error(`Não foi possível validar a sessão do Lovable (HTTP ${probe.status}).`);
+    }
+
+    function findAuthHeaderInStorage() {
+        const storages = [localStorage, sessionStorage];
+        const likelyKey = /(auth|token|session|supabase|firebase)/i;
+
+        for (const storage of storages) {
+            for (let index = 0; index < storage.length; index += 1) {
+                const key = storage.key(index) || '';
+                if (!likelyKey.test(key)) continue;
+
+                const raw = storage.getItem(key);
+                if (!raw || raw.length > 2_000_000) continue;
+
+                const token = extractAccessToken(raw);
+                if (token) return `Bearer ${token}`;
+            }
+        }
+
+        return '';
+    }
+
+    function extractAccessToken(raw) {
+        const direct = raw.match(/(?:access_token|accessToken)["']?\s*[:=]\s*["']([^"']{20,})["']/i)?.[1];
+        if (direct) return direct;
+
+        try {
+            const parsed = JSON.parse(raw);
+            return deepFindAccessToken(parsed, 0);
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function deepFindAccessToken(value, depth) {
+        if (!value || depth > 6) return '';
+        if (Array.isArray(value)) {
+            for (const item of value) {
+                const token = deepFindAccessToken(item, depth + 1);
+                if (token) return token;
+            }
+            return '';
+        }
+        if (typeof value !== 'object') return '';
+
+        for (const [key, item] of Object.entries(value)) {
+            if (/^(access_token|accessToken)$/i.test(key) && typeof item === 'string' && item.length >= 20) {
+                return item;
+            }
+        }
+        for (const item of Object.values(value)) {
+            const token = deepFindAccessToken(item, depth + 1);
+            if (token) return token;
+        }
+        return '';
+    }
+
+    async function resolveLatestRef(projectId, signal) {
+        throwIfAborted(signal);
+        const captured = state.refsByProject.get(projectId);
+        if (isCommitSha(captured)) return captured;
+
+        // Sem uma ref capturada, o endpoint sem ref usa o HEAD atual. Isso é mais
+        // seguro do que escolher cegamente um item de /edits, cuja ordenação
