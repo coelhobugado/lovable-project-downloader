@@ -1,0 +1,120 @@
+    }
+
+    function extractProjectId(pathname) {
+        return pathname.match(/\/projects\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/|$)/i)?.[1] || '';
+    }
+
+    function isCommitSha(value) {
+        return typeof value === 'string' && /^[0-9a-f]{40}$/i.test(value);
+    }
+
+    function normalizeZipPath(path) {
+        const normalized = String(path)
+            .replace(/\\/g, '/')
+            .replace(/^\/+/, '')
+            .replace(/\/+/g, '/');
+
+        if (!normalized || normalized.includes('\0')) {
+            throw new Error('Caminho de arquivo inválido recebido da API.');
+        }
+
+        const parts = normalized.split('/');
+        if (parts.some(part => part === '..')) {
+            throw new Error(`Caminho inseguro bloqueado: ${normalized}`);
+        }
+
+        return normalized;
+    }
+
+    function inferProjectName(projectId) {
+        const title = document.title
+            .replace(/\s*[|–—-]\s*Lovable.*$/i, '')
+            .replace(/^Lovable\s*[|–—-]\s*/i, '')
+            .trim();
+        return title && !/^lovable$/i.test(title) ? title : `lovable-project-${projectId}`;
+    }
+
+    function sanitizeFileName(value) {
+        const safe = String(value)
+            .normalize('NFKD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[<>:"/\\|?*\x00-\x1F]/g, '-')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^[-. ]+|[-. ]+$/g, '')
+            .slice(0, 120);
+        return safe || 'lovable-project';
+    }
+
+    function setBusy(busy) {
+        if (!state.ui) return;
+        state.ui.button.disabled = busy;
+        state.ui.cancel.style.display = busy ? 'inline-grid' : 'none';
+        state.ui.cancel.style.placeItems = 'center';
+        state.ui.button.querySelector('span').textContent = busy ? 'Exportando projeto…' : 'Baixar projeto completo';
+    }
+
+    function setStatus(message, percent) {
+        if (!state.ui) return;
+        state.ui.status.textContent = message;
+        state.ui.status.title = message;
+        state.ui.progress.style.width = `${Math.max(0, Math.min(100, Number(percent) || 0))}%`;
+    }
+
+    function showError(message) {
+        alert(`Lovable Project Downloader\n\n${message}`);
+    }
+
+    function toUint8Array(value) {
+        if (value instanceof Uint8Array) return value;
+        if (value instanceof ArrayBuffer) return new Uint8Array(value);
+        if (ArrayBuffer.isView(value)) return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+        if (typeof value === 'string') return new TextEncoder().encode(value);
+        throw new TypeError('Conteúdo de arquivo não suportado.');
+    }
+
+    function buildCrc32Table() {
+        const table = new Uint32Array(256);
+        for (let index = 0; index < 256; index += 1) {
+            let value = index;
+            for (let bit = 0; bit < 8; bit += 1) {
+                value = (value & 1) ? (0xEDB88320 ^ (value >>> 1)) : (value >>> 1);
+            }
+            table[index] = value >>> 0;
+        }
+        return table;
+    }
+
+    function crc32(bytes) {
+        let crc = 0xFFFFFFFF;
+        for (let index = 0; index < bytes.length; index += 1) {
+            crc = (crc >>> 8) ^ crcTable[(crc ^ bytes[index]) & 0xFF];
+        }
+        return (crc ^ 0xFFFFFFFF) >>> 0;
+    }
+
+    function toDosDateTime(date) {
+        const year = Math.max(1980, date.getFullYear());
+        const dosTime = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
+        const dosDate = ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
+        return { dosTime, dosDate };
+    }
+
+    function base64ToBytes(base64) {
+        const normalized = base64.replace(/^data:[^,]+,/, '').replace(/\s+/g, '');
+        const binary = atob(normalized);
+        const bytes = new Uint8Array(binary.length);
+        for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+        return bytes;
+    }
+
+    function looksLikeBase64(value) {
+        const compact = String(value).replace(/\s+/g, '');
+        return compact.length >= 16 && compact.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(compact);
+    }
+
+    function looksLikeBinaryPlaceholder(bytes) {
+        if (bytes.length > 64) return false;
+        const text = new TextDecoder().decode(bytes).trim().toLowerCase();
+        return text === '<binary>' || text === 'binary' || text === '[binary]';
+    }
